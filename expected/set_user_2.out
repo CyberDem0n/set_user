@@ -28,7 +28,8 @@ SELECT SESSION_USER, CURRENT_USER;
 (1 row)
 
 SELECT set_user('postgres');
-ERROR:  Switching to superuser only allowed for privileged procedure: 'set_user_u'
+ERROR:  switching to superuser not allowed
+HINT:  Use 'set_user_u' to escalate.
 SELECT SESSION_USER, CURRENT_USER;
  session_user | current_user 
 --------------+--------------
@@ -74,6 +75,23 @@ RESET log_statement;
 ERROR:  "SET log_statement" blocked by set_user config
 BEGIN; SET LOCAL log_statement = 'none'; ABORT;
 ERROR:  "SET log_statement" blocked by set_user config
+-- CREATE USER|ROLE WITH SUPERUSER should fail
+CREATE USER newsuperuser WITH SUPERUSER;
+ERROR:  CREATE ROLE WITH SUPERUSER blocked by set_user config
+-- Granting superuser roles to new and axisting users should fail
+CREATE USER newuser IN ROLE postgres;
+ERROR:  GRANT role WITH SUPERUSER blocked by set_user config
+GRANT postgres TO bob;
+ERROR:  GRANT role WITH SUPERUSER blocked by set_user config
+-- ALTER USER|ROLE WITH SUPERUSER should fail
+ALTER USER bob WITH SUPERUSER;
+ERROR:  ALTER ROLE WITH SUPERUSER blocked by set_user config
+-- ALTER superuser roles should fail
+ALTER USER postgres WITH PASSWORD 'newpassword';
+ERROR:  alter superusers blocked by set_user config
+-- DROP superuser role should fail
+DROP USER postgres;
+ERROR:  drop superuser blocked by set_user config
 -- test reset_user
 SELECT reset_user();
  reset_user 
@@ -171,6 +189,20 @@ OR
  postgres | t           | t        | {}
 (2 rows)
 
+-- test reset_user
+SELECT reset_user();
+ reset_user 
+------------
+ OK
+(1 row)
+
+SELECT SESSION_USER, CURRENT_USER;
+ session_user | current_user 
+--------------+--------------
+ dba          | dba
+(1 row)
+
+RESET SESSION AUTHORIZATION;
 -- here is how we fix the environment
 -- running this in a transaction that will be aborted
 -- since we don't really want to make the postgres user

@@ -92,6 +92,7 @@
 #include "catalog/pg_proc.h"
 #include "miscadmin.h"
 #include "tcop/utility.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
@@ -120,6 +121,7 @@ static bool Block_CP = false;
 #endif
 
 static bool Block_LS = false;
+static bool Block_SM = false;
 static char *SU_Whitelist = NULL;
 
 #ifdef HAS_TWO_ARG_GETUSERNAMEFROMID
@@ -215,6 +217,24 @@ check_user_whitelist(Oid userId, const char *whitelist)
 	}
 
 	return result;
+}
+
+static void
+check_role_is_superuser(const char *role)
+{
+	bool		is_superuser;
+	HeapTuple	tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
+
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "role \"%s\" does not exist", role);
+
+	is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
+	ReleaseSysCache(tup);
+
+	if (is_superuser)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				errmsg("GRANT role WITH SUPERUSER blocked by set_user config")));
 }
 
 PG_FUNCTION_INFO_V1(set_user);
@@ -427,6 +447,11 @@ _PG_init(void)
 							 NULL, &Block_LS, true, PGC_SIGHUP,
 							 0, NULL, NULL, NULL);
 
+	DefineCustomBoolVariable("set_user.block_superuser_manipulation",
+							 "Blocks CREATE, ALTER or GRANT roles with SUPERUSER attribute",
+							 NULL, &Block_SM, true, PGC_SIGHUP,
+							 0, NULL, NULL, NULL);
+
 	DefineCustomStringVariable("set_user.superuser_whitelist",
 							 "Allows a list of users to use set_user_u for superuser escalation",
 							 NULL, &SU_Whitelist, WHITELIST_WILDCARD, PGC_SIGHUP,
@@ -502,6 +527,117 @@ PU_hook(Node *parsetree, const char *queryString,
 							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 							 errmsg("\"SET log_statement\" blocked by set_user config")));
 				break;
+
+			case T_CreateRoleStmt:
+				if (Block_SM)
+				{
+					ListCell    *option;
+
+					foreach(option, ((CreateRoleStmt *) parsetree)->options)
+					{
+						DefElem	*defel = (DefElem *) lfirst(option);
+
+						if (strcmp(defel->defname, "superuser") == 0 && intVal(defel->arg) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+									 errmsg("CREATE ROLE WITH SUPERUSER blocked by set_user config")));
+
+						if (strcmp(defel->defname, "addroleto") == 0)
+						{
+							ListCell    *l;
+
+							foreach (l, (List *) defel->arg)
+							{
+								char	    *role = strVal(lfirst(l));
+
+								check_role_is_superuser(role);
+							}
+						}
+					}
+				}
+				break;
+
+			case T_AlterRoleStmt:
+				if (Block_SM)
+				{
+					ListCell		*option;
+					bool			is_superuser;
+					AlterRoleStmt	*stmt = (AlterRoleStmt *) parsetree;
+#if PG_VERSION_NUM < 90500
+					char			*role = stmt->role;
+					HeapTuple		tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
+
+					if (!HeapTupleIsValid(tup))
+						elog(ERROR, "role \"%s\" does not exist", role);
+#else
+					HeapTuple		tup = get_rolespec_tuple(stmt->role);
+#endif
+					is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
+					ReleaseSysCache(tup);
+
+					if (is_superuser)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								errmsg("alter superusers blocked by set_user config")));
+
+					foreach(option, stmt->options)
+					{
+						DefElem    *defel = (DefElem *) lfirst(option);
+
+						if (strcmp(defel->defname, "superuser") == 0 && intVal(defel->arg) != 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+									 errmsg("ALTER ROLE WITH SUPERUSER blocked by set_user config")));
+					}
+				}
+				break;
+
+			case T_GrantRoleStmt:
+				if (Block_SM)
+				{
+					GrantRoleStmt	*stmt = (GrantRoleStmt *) parsetree;
+
+					if (stmt->is_grant)
+					{
+						ListCell    *item;
+
+						foreach(item, stmt->granted_roles)
+						{
+							AccessPriv  *priv = (AccessPriv *) lfirst(item);
+							char	    *role = priv->priv_name;
+
+							if (role != NULL)
+								check_role_is_superuser(role);
+						}
+					}
+				}
+				break;
+
+			case T_DropRoleStmt:
+				if (Block_SM)
+				{
+					ListCell		*item;
+					DropRoleStmt	*stmt = (DropRoleStmt *) parsetree;
+					foreach (item, stmt->roles)
+					{
+						char		*role = strVal(lfirst(item));
+						HeapTuple	tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
+
+						if (HeapTupleIsValid(tup))
+						{
+							bool	is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
+
+							ReleaseSysCache(tup);
+
+							if (is_superuser)
+								ereport(ERROR,
+										(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+										errmsg("drop superuser blocked by set_user config")));
+						}
+					}
+				}
+				break;
+
 			default:
 				break;
 		}

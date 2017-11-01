@@ -48,6 +48,22 @@ SET log_statement = DEFAULT;
 RESET log_statement;
 BEGIN; SET LOCAL log_statement = 'none'; ABORT;
 
+-- CREATE USER|ROLE WITH SUPERUSER should fail
+CREATE USER newsuperuser WITH SUPERUSER;
+
+-- Granting superuser roles to new and axisting users should fail
+CREATE USER newuser IN ROLE postgres;
+GRANT postgres TO bob;
+
+-- ALTER USER|ROLE WITH SUPERUSER should fail
+ALTER USER bob WITH SUPERUSER;
+
+-- ALTER superuser roles should fail
+ALTER USER postgres WITH PASSWORD 'newpassword';
+
+-- DROP superuser role should fail
+DROP USER postgres;
+
 -- test reset_user
 SELECT reset_user();
 SELECT SESSION_USER, CURRENT_USER;
@@ -116,6 +132,12 @@ OR
       AND ri.rolsuper
     )
 );
+
+-- test reset_user
+SELECT reset_user();
+SELECT SESSION_USER, CURRENT_USER;
+
+RESET SESSION AUTHORIZATION;
 
 -- here is how we fix the environment
 -- running this in a transaction that will be aborted

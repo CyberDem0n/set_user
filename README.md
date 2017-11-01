@@ -22,6 +22,7 @@ reset_user(text token) returns text
   * set_user.block_alter_system = off (defaults to "on")
   * set_user.block_copy_program = off (defaults to "on")
   * set_user.block_log_statement = off (defaults to "on")
+  * set_user.block_superuser_manipulation = off (defaults to "on")
   * set_user.superuser_whitelist = '```<user1>```,```<user2>```,...,```<userN>```' (defaults to '*')
 
 ## Description
@@ -36,6 +37,7 @@ This PostgreSQL extension allows switching users and optionally privilege escala
 * If set_user.block_log_statement is set to "on", ```SET log_statement``` and
   variations will be blocked.
 * If set_user.block_log_statement is set to "on" and ```rolename``` is a database superuser, the current log_statement setting is changed to "all", meaning every SQL statement executed
+* If set_user.block_superuser_manipulation is set to "on", extention will block creation of new superusers, altering and dropping existing superusers and granting superuser roles to some other roles.
 
 Only users with EXECUTE permission on ```set_user_u('rolename')``` may escalate to superuser. Additionally, only users explicitly listed in set_user.superuser_whitelist can escalate to superuser. If set_user.superuser_whitelist is explicitly set to the empty set, '', superuser escalation is blocked for all users. If the whitelist is equal to the wildcard character, '*', all users with EXECUTE permission on ```set_user_u()``` can escalate to superuser. The default value of set_user.superuser_whitelist is '*'.
 
@@ -61,7 +63,7 @@ Notes:
 
 If set_user.block_log_statement is set to "off", the log_statement setting is left unchanged.
 
-For the blocking of ```ALTER SYSTEM``` and ```COPY PROGRAM``` to work properly, you must include ```set_user``` in shared_preload_libraries in postgresql.conf and restart PostgreSQL.
+For the blocking of ```ALTER SYSTEM```, ```COPY PROGRAM```, ```CREATE/ALTER USER/ROLE WITH SUPERUSER | IN ROLE superuserrole``` and ```GRANT superuserrole to anotherrole``` to work properly, you must include ```set_user``` in shared_preload_libraries in postgresql.conf and restart PostgreSQL.
 
 Neither```set_user('rolename')``` nor ```set_user_u('rolename')``` may be executed from within an explicit transaction block.
 
@@ -175,10 +177,11 @@ Then add these lines to the end of the file:
 shared_preload_libraries = 'set_user'
 # The following lines are only required to modify the
 # blocking of each respective command if desired
-set_user.block_alter_system = off       #defaults to "on"
-set_user.block_copy_program = off       #defaults to "on"
-set_user.block_log_statement = off      #defaults to "on"
-set_user.superuser_whitelist = ''       #defaults to '*'
+set_user.block_alter_system = off           #defaults to "on"
+set_user.block_copy_program = off           #defaults to "on"
+set_user.block_log_statement = off          #defaults to "on"
+set_user.block_superuser_manipulation = off #defaults to "on"
+set_user.superuser_whitelist = ''           #defaults to '*'
 ```
 
 Finally, restart PostgreSQL (method may vary):
@@ -203,6 +206,8 @@ CREATE EXTENSION set_user;
   * set_user.block_copy_program = on
 * Block SET log_statement commands
   * set_user.block_log_statement = on
+* Block CREATE/ALTER USER/ROLE WITH SUPERUSER | IN ROLE superuserrole, DROP superuserrole commads and GRANT superuserrole to anotherrole command
+  * set_user.block_superuser_manipulation = on
 * Allow list of users to escalate to superuser
   * set_user.superuser_whitelist = '```<user1>,<user2>,...,<userN>```'
 
