@@ -78,7 +78,7 @@ ERROR:  "SET log_statement" blocked by set_user config
 -- CREATE USER|ROLE WITH SUPERUSER should fail
 CREATE USER newsuperuser WITH SUPERUSER;
 ERROR:  CREATE ROLE WITH SUPERUSER blocked by set_user config
--- Granting superuser roles to new and axisting users should fail
+-- Granting superuser roles to new and existing users should fail
 CREATE USER newuser IN ROLE postgres;
 ERROR:  GRANT role WITH SUPERUSER blocked by set_user config
 GRANT postgres TO bob;

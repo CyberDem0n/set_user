@@ -51,7 +51,7 @@ BEGIN; SET LOCAL log_statement = 'none'; ABORT;
 -- CREATE USER|ROLE WITH SUPERUSER should fail
 CREATE USER newsuperuser WITH SUPERUSER;
 
--- Granting superuser roles to new and axisting users should fail
+-- Granting superuser roles to new and existing users should fail
 CREATE USER newuser IN ROLE postgres;
 GRANT postgres TO bob;
 
