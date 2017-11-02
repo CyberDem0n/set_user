@@ -84,6 +84,13 @@ ERROR:  GRANT role WITH SUPERUSER blocked by set_user config
 -- ALTER USER|ROLE WITH SUPERUSER should fail
 ALTER USER bob WITH SUPERUSER;
 ERROR:  ALTER ROLE WITH SUPERUSER blocked by set_user config
+-- ALTER USER|ROLE SET|RESET log_statement|ALL should fail
+ALTER USER bob SET log_statement = 'none';
+ERROR:  "ALTER ROLE SET log_statement" blocked by set_user config
+ALTER USER bob RESET log_statement;
+ERROR:  "ALTER ROLE SET log_statement" blocked by set_user config
+ALTER USER bob RESET ALL;
+ERROR:  "ALTER ROLE RESET ALL" blocked by set_user config
 -- ALTER superuser roles should fail
 ALTER USER postgres WITH PASSWORD 'newpassword';
 ERROR:  ALTER superusers blocked by set_user config

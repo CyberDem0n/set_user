@@ -58,6 +58,11 @@ GRANT postgres TO bob;
 -- ALTER USER|ROLE WITH SUPERUSER should fail
 ALTER USER bob WITH SUPERUSER;
 
+-- ALTER USER|ROLE SET|RESET log_statement|ALL should fail
+ALTER USER bob SET log_statement = 'none';
+ALTER USER bob RESET log_statement;
+ALTER USER bob RESET ALL;
+
 -- ALTER superuser roles should fail
 ALTER USER postgres WITH PASSWORD 'newpassword';
 

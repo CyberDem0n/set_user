@@ -598,9 +598,20 @@ PU_hook(Node *parsetree, const char *queryString,
 
 					if (stmt->role)
 					{
-						char	*role = ROLETOCSTRING(stmt->role);
+						char			*role = ROLETOCSTRING(stmt->role);
+						VariableSetStmt	*setstmt = stmt->setstmt;
 
 						error_if_role_is_superuser(role, "ALTER superuser SET", false);
+
+						if (setstmt->kind == VAR_RESET_ALL)
+							ereport(ERROR,
+									(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+									 errmsg("\"ALTER ROLE RESET ALL\" blocked by set_user config")));
+						else if (strcmp(setstmt->name, "log_statement") == 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+									 errmsg("\"ALTER ROLE SET log_statement\" "
+											"blocked by set_user config")));
 					}
 				}
 				break;
