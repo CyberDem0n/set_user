@@ -127,9 +127,11 @@ static char *SU_Whitelist = NULL;
 #ifdef HAS_TWO_ARG_GETUSERNAMEFROMID
 /* 9.5 - master */
 #define GETUSERNAMEFROMID(ouserid) GetUserNameFromId(ouserid, false)
+#define ROLETOCSTRING(role) ((RoleSpec *) role)->rolename
 #else
 /* 9.1 - 9.4 */
 #define GETUSERNAMEFROMID(ouserid) GetUserNameFromId(ouserid)
+#define ROLETOCSTRING(role) role
 #endif
 
 #ifdef HAS_PSTMT
@@ -220,15 +222,22 @@ check_user_whitelist(Oid userId, const char *whitelist)
 }
 
 static void
-check_role_is_superuser(const char *role)
+error_if_role_is_superuser(const char *role,
+						   const char *errormsg,
+						   bool missing_ok)
 {
 	bool		is_superuser;
 	HeapTuple	tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
 
 	if (!HeapTupleIsValid(tup))
+	{
+		if (missing_ok)
+			return;
+
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				errmsg("role \"%s\" does not exist", role)));
+	}
 
 	is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
 	ReleaseSysCache(tup);
@@ -236,7 +245,7 @@ check_role_is_superuser(const char *role)
 	if (is_superuser)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				errmsg("GRANT role WITH SUPERUSER blocked by set_user config")));
+				errmsg("%s blocked by set_user config", errormsg)));
 }
 
 PG_FUNCTION_INFO_V1(set_user);
@@ -554,7 +563,7 @@ PU_hook(Node *parsetree, const char *queryString,
 							{
 								char	    *role = strVal(lfirst(l));
 
-								check_role_is_superuser(role);
+								error_if_role_is_superuser(role, "GRANT role WITH SUPERUSER", false);
 							}
 						}
 					}
@@ -565,26 +574,10 @@ PU_hook(Node *parsetree, const char *queryString,
 				if (Block_SM)
 				{
 					ListCell		*option;
-					bool			is_superuser;
 					AlterRoleStmt	*stmt = (AlterRoleStmt *) parsetree;
-#if PG_VERSION_NUM < 90500
-					char			*role = stmt->role;
-					HeapTuple		tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
+					char			*role = ROLETOCSTRING(stmt->role);
 
-					if (!HeapTupleIsValid(tup))
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								errmsg("role \"%s\" does not exist", role)));
-#else
-					HeapTuple		tup = get_rolespec_tuple(stmt->role);
-#endif
-					is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
-					ReleaseSysCache(tup);
-
-					if (is_superuser)
-						ereport(ERROR,
-								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-								errmsg("alter superusers blocked by set_user config")));
+					error_if_role_is_superuser(role, "ALTER superusers", false);
 
 					foreach(option, stmt->options)
 					{
@@ -594,6 +587,20 @@ PU_hook(Node *parsetree, const char *queryString,
 							ereport(ERROR,
 									(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 									 errmsg("ALTER ROLE WITH SUPERUSER blocked by set_user config")));
+					}
+				}
+				break;
+
+			case T_AlterRoleSetStmt:
+				if (Block_SM)
+				{
+					AlterRoleSetStmt	*stmt = (AlterRoleSetStmt *) parsetree;
+
+					if (stmt->role)
+					{
+						char	*role = ROLETOCSTRING(stmt->role);
+
+						error_if_role_is_superuser(role, "ALTER superuser SET", false);
 					}
 				}
 				break;
@@ -613,7 +620,7 @@ PU_hook(Node *parsetree, const char *queryString,
 							char	    *role = priv->priv_name;
 
 							if (role != NULL)
-								check_role_is_superuser(role);
+								error_if_role_is_superuser(role, "GRANT role WITH SUPERUSER", false);
 						}
 					}
 				}
@@ -627,19 +634,8 @@ PU_hook(Node *parsetree, const char *queryString,
 					foreach (item, stmt->roles)
 					{
 						char		*role = strVal(lfirst(item));
-						HeapTuple	tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
 
-						if (HeapTupleIsValid(tup))
-						{
-							bool	is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
-
-							ReleaseSysCache(tup);
-
-							if (is_superuser)
-								ereport(ERROR,
-										(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-										errmsg("drop superuser blocked by set_user config")));
-						}
+						error_if_role_is_superuser(role, "DROP superuser", stmt->missing_ok);
 					}
 				}
 				break;

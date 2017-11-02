@@ -84,10 +84,13 @@ ALTER USER bob WITH SUPERUSER;
 ERROR:  ALTER ROLE WITH SUPERUSER blocked by set_user config
 -- ALTER superuser roles should fail
 ALTER USER postgres WITH PASSWORD 'newpassword';
-ERROR:  alter superusers blocked by set_user config
+ERROR:  ALTER superusers blocked by set_user config
+-- ALTER superuser SET should fail
+ALTER USER postgres SET statement_timeout TO 1;
+ERROR:  ALTER superuser SET blocked by set_user config
 -- DROP superuser role should fail
 DROP USER postgres;
-ERROR:  drop superuser blocked by set_user config
+ERROR:  DROP superuser blocked by set_user config
 -- test reset_user
 SELECT reset_user();
  reset_user 

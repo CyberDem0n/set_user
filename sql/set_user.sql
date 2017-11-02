@@ -61,6 +61,9 @@ ALTER USER bob WITH SUPERUSER;
 -- ALTER superuser roles should fail
 ALTER USER postgres WITH PASSWORD 'newpassword';
 
+-- ALTER superuser SET should fail
+ALTER USER postgres SET statement_timeout TO 1;
+
 -- DROP superuser role should fail
 DROP USER postgres;
 
