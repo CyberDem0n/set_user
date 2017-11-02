@@ -226,7 +226,9 @@ check_role_is_superuser(const char *role)
 	HeapTuple	tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
 
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "role \"%s\" does not exist", role);
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("role \"%s\" does not exist", role)));
 
 	is_superuser = ((Form_pg_authid) GETSTRUCT(tup))->rolsuper;
 	ReleaseSysCache(tup);
@@ -326,7 +328,9 @@ set_user(PG_FUNCTION_ARGS)
 		/* Look up the username */
 		roleTup = SearchSysCache1(AUTHNAME, PointerGetDatum(newuser));
 		if (!HeapTupleIsValid(roleTup))
-			elog(ERROR, "role \"%s\" does not exist", newuser);
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					errmsg("role \"%s\" does not exist", newuser)));
 
 		NewUserId = HeapTupleGetOid(roleTup);
 		NewUser_is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
@@ -568,7 +572,9 @@ PU_hook(Node *parsetree, const char *queryString,
 					HeapTuple		tup = SearchSysCache1(AUTHNAME, PointerGetDatum(role));
 
 					if (!HeapTupleIsValid(tup))
-						elog(ERROR, "role \"%s\" does not exist", role);
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								errmsg("role \"%s\" does not exist", role)));
 #else
 					HeapTuple		tup = get_rolespec_tuple(stmt->role);
 #endif
